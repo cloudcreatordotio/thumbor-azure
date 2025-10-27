@@ -1,0 +1,75 @@
+#!/bin/bash
+# Demonstration of Thumbor URL generation with new parameters
+
+echo "============================================"
+echo "Thumbor URL Generation Demonstration"
+echo "============================================"
+echo ""
+
+URL="https://media.mywebsitename.com/cdn/path/to/image/001-100x100.jpg"
+
+echo "Base URL: $URL"
+echo ""
+echo "This script will show you the exact Thumbor URLs generated"
+echo "for different parameter combinations."
+echo ""
+echo "============================================"
+echo ""
+
+# Example 1: With numBytes
+echo "Example 1: With --numBytes=45000"
+echo "---------------------------------"
+echo "Command:"
+echo "  ./build.sh --test --url=\"$URL\" --numBytes=45000"
+echo ""
+echo "This will generate a THUMBOR_URL similar to:"
+echo "  http://localhost:8080/unsafe/fit-in/100x100/filters:number-of-bytes(45000):strip_icc()/[encoded_url]"
+echo ""
+echo "Key differences:"
+echo "  - Uses 'fit-in' mode to maintain aspect ratio"
+echo "  - Adds 'number-of-bytes(45000)' filter"
+echo "  - Always includes 'strip_icc()' filter"
+echo ""
+
+# Example 2: With quality, format, and maxBytes
+echo "Example 2: With --quality=90 --format=jpeg --maxBytes=100000"
+echo "------------------------------------------------------------"
+echo "Command:"
+echo "  ./build.sh --test --url=\"$URL\" --quality=90 --format=jpeg --maxBytes=100000"
+echo ""
+echo "This will generate a THUMBOR_URL like:"
+echo "  http://localhost:8080/unsafe/100x0/smart/filters:quality(90):format(jpeg):max_bytes(100000):strip_icc()/[encoded_url]"
+echo ""
+echo "Key differences:"
+echo "  - Uses 'smart' mode for intelligent cropping"
+echo "  - Height set to 0 for automatic calculation"
+echo "  - Chains multiple filters with colons"
+echo "  - Output file will have .jpeg extension"
+echo ""
+
+# Example 3: Just quality
+echo "Example 3: Simple quality adjustment"
+echo "------------------------------------"
+echo "Command:"
+echo "  ./build.sh --test --url=\"$URL\" --quality=85"
+echo ""
+echo "This will generate:"
+echo "  http://localhost:8080/unsafe/100x100/filters:quality(85):strip_icc()/[encoded_url]"
+echo ""
+
+# Example 4: Format conversion
+echo "Example 4: Format conversion to WebP"
+echo "------------------------------------"
+echo "Command:"
+echo "  ./build.sh --test --url=\"$URL\" --format=webp"
+echo ""
+echo "This will generate:"
+echo "  http://localhost:8080/unsafe/100x100/filters:format(webp):strip_icc()/[encoded_url]"
+echo "  Output file: test_output/cropped/001-100x100.webp"
+echo ""
+
+echo "============================================"
+echo "To test any of these examples, run the"
+echo "commands shown above. The actual Thumbor URL"
+echo "will be displayed prominently in the output."
+echo "============================================"
