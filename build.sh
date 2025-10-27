@@ -133,9 +133,9 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: ./build.sh [options]"
             echo ""
             echo "Options:"
-            echo "  --push                  Push to Azure Container Registry"
+            echo "  --push                  Push to Azure Container Registry or Docker Hub"
             echo "  --tag <tag>            Custom tag (default: latest)"
-            echo "  --registry <name>      Azure Container Registry name"
+            echo "  --registry <name>      Azure Container Registry name, or 'thumbor-azure' for Docker Hub"
             echo "  --test                 Run container locally for testing"
             echo "  --url <url>            Test with a specific image URL (requires --test)"
             echo "                         Example: --url 'https://example.com/image-100x100.jpg'"
@@ -165,6 +165,12 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "  # Build multiplatform and push to Azure"
             echo "  ./build.sh --multiplatform-push --registry myregistry --tag v1.0.0"
+            echo ""
+            echo "  # Push to Docker Hub (cloudcreatordotio/thumbor-azure)"
+            echo "  ./build.sh --push --registry thumbor-azure --tag v1.0.0"
+            echo ""
+            echo "  # Multiplatform push to Docker Hub"
+            echo "  ./build.sh --multiplatform-push --registry thumbor-azure --tag v1.0.0"
             exit 0
             ;;
         *)
@@ -236,6 +242,16 @@ if [ "$MULTIPLATFORM_PUSH" = true ]; then
     fi
 fi
 
+# Detect Docker Hub special case
+DOCKER_HUB_PUSH=false
+DOCKER_HUB_IMAGE=""
+if [ "$REGISTRY" = "thumbor-azure" ]; then
+    DOCKER_HUB_PUSH=true
+    DOCKER_HUB_IMAGE="cloudcreatordotio/thumbor-azure:$TAG"
+    echo "Special case detected: Will push to Docker Hub instead of Azure Container Registry"
+    echo "Target image: $DOCKER_HUB_IMAGE"
+fi
+
 # Setup buildx builder if using platform or multiplatform features
 if [ -n "$PLATFORM" ] || [ "$MULTIPLATFORM_PUSH" = true ]; then
     echo "Setting up Docker buildx builder..."
@@ -252,16 +268,23 @@ if [ -n "$PLATFORM" ] || [ "$MULTIPLATFORM_PUSH" = true ]; then
         docker buildx inspect --bootstrap
     fi
 
-    # Login to Azure Container Registry if pushing multiplatform or multiple platforms with --push
+    # Login to appropriate registry if pushing multiplatform or multiple platforms with --push
     if ([ "$MULTIPLATFORM_PUSH" = true ] || ([ "$PUSH" = true ] && [[ "$PLATFORM" == *","* ]])) && [ -n "$REGISTRY" ]; then
         echo ""
-        echo "Logging in to Azure Container Registry..."
-        echo "Note: Make sure you're logged in to Azure CLI (az login)"
-        az acr login --name "$REGISTRY" || {
-            echo "Error: Failed to login to Azure Container Registry"
-            echo "Make sure you have run 'az login' and have access to the registry"
-            exit 1
-        }
+        if [ "$DOCKER_HUB_PUSH" = true ]; then
+            echo "Logging in to Docker Hub..."
+            echo "Note: Make sure you're logged in to Docker Hub (docker login)"
+            # Docker login is already handled by docker CLI, just remind user
+            echo "If not already logged in, run: docker login"
+        else
+            echo "Logging in to Azure Container Registry..."
+            echo "Note: Make sure you're logged in to Azure CLI (az login)"
+            az acr login --name "$REGISTRY" || {
+                echo "Error: Failed to login to Azure Container Registry"
+                echo "Make sure you have run 'az login' and have access to the registry"
+                exit 1
+            }
+        fi
     fi
 fi
 
@@ -282,14 +305,22 @@ if [ -n "$PLATFORM" ] || [ "$MULTIPLATFORM_PUSH" = true ]; then
     # Determine output type
     if [ "$MULTIPLATFORM_PUSH" = true ] && [ -n "$REGISTRY" ]; then
         # Push directly to registry for multiplatform
-        ACR_IMAGE="$REGISTRY.azurecr.io/$IMAGE_NAME:$TAG"
-        BUILD_ARGS="$BUILD_ARGS --push -t $ACR_IMAGE"
-        echo "Will push multiplatform image directly to: $ACR_IMAGE"
+        if [ "$DOCKER_HUB_PUSH" = true ]; then
+            TARGET_IMAGE="$DOCKER_HUB_IMAGE"
+        else
+            TARGET_IMAGE="$REGISTRY.azurecr.io/$IMAGE_NAME:$TAG"
+        fi
+        BUILD_ARGS="$BUILD_ARGS --push -t $TARGET_IMAGE"
+        echo "Will push multiplatform image directly to: $TARGET_IMAGE"
     elif [ "$PUSH" = true ] && [[ "$PLATFORM" == *","* ]] && [ -n "$REGISTRY" ]; then
         # Push directly when using --push with multiple platforms
-        ACR_IMAGE="$REGISTRY.azurecr.io/$IMAGE_NAME:$TAG"
-        BUILD_ARGS="$BUILD_ARGS --push -t $ACR_IMAGE"
-        echo "Will push multiplatform image directly to: $ACR_IMAGE"
+        if [ "$DOCKER_HUB_PUSH" = true ]; then
+            TARGET_IMAGE="$DOCKER_HUB_IMAGE"
+        else
+            TARGET_IMAGE="$REGISTRY.azurecr.io/$IMAGE_NAME:$TAG"
+        fi
+        BUILD_ARGS="$BUILD_ARGS --push -t $TARGET_IMAGE"
+        echo "Will push multiplatform image directly to: $TARGET_IMAGE"
     elif [ "$PUSH" = true ] && [ -n "$REGISTRY" ]; then
         # Single platform with push - can load locally then push later
         BUILD_ARGS="$BUILD_ARGS --load -t $IMAGE_NAME:$TAG"
@@ -690,7 +721,7 @@ if [ "$TEST" = true ]; then
     echo "Local testing completed successfully!"
 fi
 
-# Push to Azure Container Registry if requested
+# Push to registry if requested
 if [ "$PUSH" = true ]; then
     if [ -z "$REGISTRY" ]; then
         echo "Error: --registry is required when using --push"
@@ -699,46 +730,84 @@ if [ "$PUSH" = true ]; then
     fi
 
     echo ""
-    echo "========================================="
-    echo "Pushing to Azure Container Registry"
-    echo "========================================="
 
-    # Full image name for ACR
-    ACR_IMAGE="$REGISTRY.azurecr.io/$IMAGE_NAME:$TAG"
-
-    # Login to Azure Container Registry
-    echo "Logging in to Azure Container Registry..."
-    echo "Note: Make sure you're logged in to Azure CLI (az login)"
-    az acr login --name "$REGISTRY" || {
-        echo "Error: Failed to login to Azure Container Registry"
-        echo "Make sure you have run 'az login' and have access to the registry"
-        exit 1
-    }
-
-    # Tag the image for ACR
-    echo "Tagging image for ACR..."
-    docker tag "$IMAGE_NAME:$TAG" "$ACR_IMAGE"
-
-    # Push the image
-    echo "Pushing image to ACR..."
-    docker push "$ACR_IMAGE"
-
-    if [ $? -eq 0 ]; then
-        echo ""
+    if [ "$DOCKER_HUB_PUSH" = true ]; then
         echo "========================================="
-        echo "Image successfully pushed to ACR!"
-        echo "Image: $ACR_IMAGE"
+        echo "Pushing to Docker Hub"
         echo "========================================="
+
+        # Login reminder for Docker Hub
+        echo "Note: Make sure you're logged in to Docker Hub (docker login)"
+        echo "If not already logged in, run: docker login"
         echo ""
-        echo "To deploy to Azure Web App, use:"
-        echo "az webapp config container set \\"
-        echo "  --name <webapp-name> \\"
-        echo "  --resource-group <resource-group> \\"
-        echo "  --docker-custom-image-name $ACR_IMAGE \\"
-        echo "  --docker-registry-server-url https://$REGISTRY.azurecr.io"
+
+        # Tag the image for Docker Hub
+        echo "Tagging image for Docker Hub..."
+        docker tag "$IMAGE_NAME:$TAG" "$DOCKER_HUB_IMAGE"
+
+        # Push the image
+        echo "Pushing image to Docker Hub..."
+        docker push "$DOCKER_HUB_IMAGE"
+
+        if [ $? -eq 0 ]; then
+            echo ""
+            echo "========================================="
+            echo "Image successfully pushed to Docker Hub!"
+            echo "Image: $DOCKER_HUB_IMAGE"
+            echo "========================================="
+            echo ""
+            echo "To pull this image:"
+            echo "docker pull $DOCKER_HUB_IMAGE"
+            echo ""
+            echo "To run this image:"
+            echo "docker run -p 8080:80 $DOCKER_HUB_IMAGE"
+        else
+            echo "Error: Failed to push image to Docker Hub"
+            echo "Please ensure you are logged in: docker login"
+            exit 1
+        fi
     else
-        echo "Error: Failed to push image to ACR"
-        exit 1
+        echo "========================================="
+        echo "Pushing to Azure Container Registry"
+        echo "========================================="
+
+        # Full image name for ACR
+        ACR_IMAGE="$REGISTRY.azurecr.io/$IMAGE_NAME:$TAG"
+
+        # Login to Azure Container Registry
+        echo "Logging in to Azure Container Registry..."
+        echo "Note: Make sure you're logged in to Azure CLI (az login)"
+        az acr login --name "$REGISTRY" || {
+            echo "Error: Failed to login to Azure Container Registry"
+            echo "Make sure you have run 'az login' and have access to the registry"
+            exit 1
+        }
+
+        # Tag the image for ACR
+        echo "Tagging image for ACR..."
+        docker tag "$IMAGE_NAME:$TAG" "$ACR_IMAGE"
+
+        # Push the image
+        echo "Pushing image to ACR..."
+        docker push "$ACR_IMAGE"
+
+        if [ $? -eq 0 ]; then
+            echo ""
+            echo "========================================="
+            echo "Image successfully pushed to ACR!"
+            echo "Image: $ACR_IMAGE"
+            echo "========================================="
+            echo ""
+            echo "To deploy to Azure Web App, use:"
+            echo "az webapp config container set \\"
+            echo "  --name <webapp-name> \\"
+            echo "  --resource-group <resource-group> \\"
+            echo "  --docker-custom-image-name $ACR_IMAGE \\"
+            echo "  --docker-registry-server-url https://$REGISTRY.azurecr.io"
+        else
+            echo "Error: Failed to push image to ACR"
+            exit 1
+        fi
     fi
 fi
 

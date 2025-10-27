@@ -47,8 +47,11 @@ chmod +x build.sh
 # Build for specific platform (e.g., linux/amd64 for Azure)
 ./build.sh --platform linux/amd64
 
-# Build multiplatform and push to registry
+# Build multiplatform and push to Azure Container Registry
 ./build.sh --multiplatform-push --registry myregistry --tag v1.0.0
+
+# Push to Docker Hub (cloudcreatordotio/thumbor-azure)
+./build.sh --push --registry thumbor-azure --tag latest
 ```
 
 ### Testing Locally
@@ -70,6 +73,52 @@ curl http://localhost:8080/healthcheck
 curl http://localhost:8080/unsafe/300x200/smart/https://via.placeholder.com/600x400
 ```
 
+## Docker Hub Deployment
+
+The build script includes special support for pushing to Docker Hub. When you use `--registry thumbor-azure`, it automatically pushes to the official Docker Hub repository at `cloudcreatordotio/thumbor-azure`.
+
+### Prerequisites
+
+- Docker Hub account with access to push to `cloudcreatordotio/thumbor-azure`
+- Docker CLI logged in: `docker login`
+
+### Pushing to Docker Hub
+
+```bash
+# Push single platform image to Docker Hub
+./build.sh --push --registry thumbor-azure --tag latest
+
+# Push with a specific version tag
+./build.sh --push --registry thumbor-azure --tag v1.0.0
+
+# Push multiplatform image (linux/amd64 and linux/arm64)
+./build.sh --multiplatform-push --registry thumbor-azure --tag latest
+
+# Build and test locally first, then push
+./build.sh --test  # Test locally
+./build.sh --push --registry thumbor-azure --tag latest  # Push to Docker Hub
+```
+
+### Pulling from Docker Hub
+
+Once pushed, the image is publicly available:
+
+```bash
+# Pull the latest version
+docker pull cloudcreatordotio/thumbor-azure:latest
+
+# Pull a specific version
+docker pull cloudcreatordotio/thumbor-azure:v1.0.0
+
+# Run directly from Docker Hub
+docker run -d \
+  --name thumbor-azure \
+  -p 8080:80 \
+  -e THUMBOR_NUM_PROCESSES=4 \
+  -e SECURITY_KEY=your-secure-key \
+  cloudcreatordotio/thumbor-azure:latest
+```
+
 ## Multiplatform Build Support
 
 The build script now supports creating multiplatform Docker images using Docker buildx, enabling seamless development on ARM-based Macs while deploying to linux/amd64 Azure environments.
@@ -85,9 +134,9 @@ The build script now supports creating multiplatform Docker images using Docker 
 
 | Option | Description | Example |
 |--------|-------------|---------|
-| `--push` | Push to Azure Container Registry | `./build.sh --push --registry myregistry` |
+| `--push` | Push to registry (ACR or Docker Hub) | `./build.sh --push --registry myregistry` |
 | `--tag <tag>` | Custom tag (default: latest) | `./build.sh --tag v1.0.0` |
-| `--registry <name>` | Azure Container Registry name | `./build.sh --registry myregistry` |
+| `--registry <name>` | Registry name (use 'thumbor-azure' for Docker Hub) | `./build.sh --registry thumbor-azure` |
 | `--test` | Run container locally for testing | `./build.sh --test` |
 | `--url <url>` | Test with specific image URL | `./build.sh --test --url https://example.com/image.jpg` |
 | `--help` | Show help message | `./build.sh --help` |
@@ -196,7 +245,20 @@ services:
 2. Azure Container Registry (ACR) created
 3. Azure Web App for Containers created
 
-### Step 1: Build and Push to ACR
+### Step 1: Choose Your Registry
+
+You can either push to Azure Container Registry (ACR) or use the public Docker Hub image.
+
+#### Option A: Use Docker Hub Image (Simplest)
+
+```bash
+# Pull the pre-built image from Docker Hub
+docker pull cloudcreatordotio/thumbor-azure:latest
+
+# Or reference it directly in your Azure deployment
+```
+
+#### Option B: Build and Push to ACR (Private Registry)
 
 ```bash
 # Set your ACR name
@@ -235,6 +297,29 @@ If you're developing on an ARM-based Mac (Apple Silicon) and deploying to Azure:
 
 ### Step 2: Deploy to Azure Web App
 
+#### Deploy from Docker Hub
+
+```bash
+# Set variables
+RESOURCE_GROUP=myresourcegroup
+WEBAPP_NAME=my-thumbor-app
+
+# Create Web App with Docker Hub image
+az webapp create \
+  --resource-group $RESOURCE_GROUP \
+  --plan myappserviceplan \
+  --name $WEBAPP_NAME \
+  --deployment-container-image-name cloudcreatordotio/thumbor-azure:latest
+
+# Configure the Web App
+az webapp config container set \
+  --name $WEBAPP_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --docker-custom-image-name cloudcreatordotio/thumbor-azure:latest
+```
+
+#### Deploy from Azure Container Registry
+
 ```bash
 # Set variables
 RESOURCE_GROUP=myresourcegroup
@@ -256,7 +341,11 @@ az webapp config container set \
   --docker-registry-server-url https://$ACR_NAME.azurecr.io \
   --docker-registry-server-user $(az acr credential show --name $ACR_NAME --query username -o tsv) \
   --docker-registry-server-password $(az acr credential show --name $ACR_NAME --query passwords[0].value -o tsv)
+```
 
+#### Configure Environment Variables (Both Docker Hub and ACR)
+
+```bash
 # Set environment variables
 az webapp config appsettings set \
   --resource-group $RESOURCE_GROUP \
