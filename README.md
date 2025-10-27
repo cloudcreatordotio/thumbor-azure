@@ -493,6 +493,9 @@ az webapp log download \
 
 The container includes a built-in web-based Redis administration interface for managing and monitoring the Redis instance.
 
+** ***commented out in the NGINX conf by default. Enable by uncommenting in the NGINX conf and rebuilding the image.*** **
+
+
 ### Accessing Redis Admin
 
 | Environment | URL |
