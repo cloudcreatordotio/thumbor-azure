@@ -54,6 +54,8 @@ handle_permissions() {
     # Nginx directories
     fix_ownership "/var/cache/nginx" "www-data" "www-data"
     fix_ownership "/run/nginx" "www-data" "www-data"
+    fix_ownership "/var/log/nginx" "www-data" "thumbor"
+    fix_ownership "/var/lib/nginx" "www-data" "thumbor"
 
     # Redis directory
     fix_ownership "/data/redis" "redis" "redis"
@@ -67,6 +69,8 @@ handle_permissions() {
     chmod 755 /data/thumbor/result_storage 2>/dev/null || true
     chmod 755 /data/thumbor/cache 2>/dev/null || true
     chmod 755 /var/cache/nginx 2>/dev/null || true
+    chmod 755 /var/log/nginx 2>/dev/null || true
+    chmod 755 /var/lib/nginx 2>/dev/null || true
 }
 
 # Handle special case for Azure Web Apps
@@ -105,9 +109,9 @@ if [ -n "$WEBSITE_INSTANCE_ID" ]; then
             /usr/sbin/sshd -D -p 2222 &
         fi
 
-        # Drop to thumbor user for running services
-        echo "Dropping privileges to thumbor user..."
-        exec su-exec thumbor /app/startup.sh "$@"
+        # Run startup directly as root (supervisord needs root to switch users)
+        echo "Starting services (supervisord runs as root to manage multi-user processes)..."
+        exec /app/startup.sh "$@"
     else
         # Already running as non-root
         exec /app/startup.sh "$@"

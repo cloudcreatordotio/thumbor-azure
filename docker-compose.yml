@@ -3,7 +3,7 @@
 services:
   thumbor:
     #image: mywebsitename.azurecr.io/thumbor-azure:latest
-    image: thumbor-azure
+    image: cloudcreatordotio/thumbor-azure:latest
     build:
       context: .
       dockerfile: Dockerfile

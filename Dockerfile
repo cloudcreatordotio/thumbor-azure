@@ -102,18 +102,31 @@ RUN mkdir -p /app/thumbor \
     && mkdir -p /var/cache/nginx \
     && mkdir -p /var/log/supervisor \
     && mkdir -p /run/nginx \
+    && mkdir -p /run/supervisor \
     && mkdir -p /data/redis \
+    && mkdir -p /var/log/nginx \
+    && mkdir -p /var/lib/nginx/body \
+    && mkdir -p /var/lib/nginx/proxy \
+    && mkdir -p /var/lib/nginx/fastcgi \
+    && mkdir -p /var/lib/nginx/uwsgi \
+    && mkdir -p /var/lib/nginx/scgi \
     && chown -R thumbor:thumbor /app \
     && chown -R thumbor:thumbor /data/thumbor \
     && chown -R www-data:www-data /var/cache/nginx \
     && chown -R www-data:www-data /run/nginx \
+    && chown -R thumbor:thumbor /run/supervisor \
+    && chown -R www-data:thumbor /var/log/nginx \
+    && chown -R www-data:thumbor /var/lib/nginx \
     && chown -R redis:redis /data/redis \
     && chown -R thumbor:thumbor /var/log/supervisor \
     && chmod 775 /app/logs \
     && chmod 775 /data/thumbor/storage \
     && chmod 775 /data/thumbor/result_storage \
     && chmod 775 /data/thumbor/cache \
-    && chmod 775 /var/cache/nginx
+    && chmod 775 /var/cache/nginx \
+    && chmod 775 /var/log/nginx \
+    && chmod 775 /var/lib/nginx \
+    && chmod 775 /run/supervisor
 
 # Set default environment variables for nginx templating
 ARG NGINX_LISTEN_PORT=80
@@ -173,8 +186,8 @@ EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:${PORT}/healthcheck || exit 1
 
-# Switch to non-root user for runtime
-USER thumbor
+# Note: We run as root to allow supervisord to switch users
+# Individual services run as non-root users via supervisord config
 
 # Start services via entrypoint script
 ENTRYPOINT ["/app/entrypoint.sh"]

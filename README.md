@@ -56,21 +56,29 @@ chmod +x build.sh
 
 ### Testing Locally
 
+```
+# Pull the latest version
+docker pull cloudcreatordotio/thumbor-azure:latest 
+```
+
 ```bash
 # Run the container locally
 docker run -d \
-  --name thumbor-local \
+  --name thumbor-dev \
   -p 8080:80 \
   -e THUMBOR_NUM_PROCESSES=4 \
   -e SECURITY_KEY=your-secure-key \
-  -e ALLOW_UNSAFE_URL=False \
-  thumbor-azure:latest
+  -e ALLOW_UNSAFE_URL=True \
+  cloudcreatordotio/thumbor-azure:latest
+
+# Or Run via Docker Compose
+docker-compose up -d  
 
 # Test the health endpoint
 curl http://localhost:8080/healthcheck
 
 # Process an image (unsafe URL for testing only)
-curl http://localhost:8080/unsafe/300x200/smart/https://via.placeholder.com/600x400
+curl http://localhost:8080/unsafe/300x200/smart/cdn.pixabay.com/photo/2014/06/03/19/38/test-361512_1280.jpg
 ```
 
 ## Docker Hub Deployment
