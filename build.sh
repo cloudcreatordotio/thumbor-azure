@@ -35,6 +35,8 @@ PLATFORM=""
 MULTIPLATFORM_PUSH=false
 BUILDER_NAME="thumbor-multiplatform"
 NO_CACHE=false
+# Supply chain attestations (SBOM and provenance)
+ENABLE_ATTESTATIONS=true
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -127,6 +129,10 @@ while [[ $# -gt 0 ]]; do
             NO_CACHE=true
             shift
             ;;
+        --no-attestations)
+            ENABLE_ATTESTATIONS=false
+            shift
+            ;;
         --help)
             echo "Build script for Thumbor Azure Container with Multiplatform Support"
             echo ""
@@ -153,8 +159,17 @@ while [[ $# -gt 0 ]]; do
             echo "  --builder <name>       Use specific buildx builder"
             echo "                         Default: thumbor-multiplatform"
             echo "  --no-cache             Build without using cache"
+            echo "  --no-attestations      Disable supply chain attestations (SBOM and provenance)"
+            echo "                         Note: Attestations are only added when pushing to registry"
             echo ""
             echo "  --help                 Show this help message"
+            echo ""
+            echo "Supply Chain Security:"
+            echo "  By default, when pushing to registries, this script includes supply chain"
+            echo "  attestations (SBOM and provenance) for enhanced security. These provide:"
+            echo "  - SBOM: Software Bill of Materials listing all components in the image"
+            echo "  - Provenance: Cryptographic proof of how and where the image was built"
+            echo "  Use --no-attestations to disable if needed (not recommended for production)."
             echo ""
             echo "Examples:"
             echo "  # Local development (current platform only)"
@@ -311,6 +326,11 @@ if [ -n "$PLATFORM" ] || [ "$MULTIPLATFORM_PUSH" = true ]; then
             TARGET_IMAGE="$REGISTRY.azurecr.io/$IMAGE_NAME:$TAG"
         fi
         BUILD_ARGS="$BUILD_ARGS --push -t $TARGET_IMAGE"
+        # Add supply chain attestations for pushed images
+        if [ "$ENABLE_ATTESTATIONS" = true ]; then
+            BUILD_ARGS="$BUILD_ARGS --provenance=true --sbom=true"
+            echo "Supply chain attestations (SBOM and provenance) will be included"
+        fi
         echo "Will push multiplatform image directly to: $TARGET_IMAGE"
     elif [ "$PUSH" = true ] && [[ "$PLATFORM" == *","* ]] && [ -n "$REGISTRY" ]; then
         # Push directly when using --push with multiple platforms
@@ -320,6 +340,11 @@ if [ -n "$PLATFORM" ] || [ "$MULTIPLATFORM_PUSH" = true ]; then
             TARGET_IMAGE="$REGISTRY.azurecr.io/$IMAGE_NAME:$TAG"
         fi
         BUILD_ARGS="$BUILD_ARGS --push -t $TARGET_IMAGE"
+        # Add supply chain attestations for pushed images
+        if [ "$ENABLE_ATTESTATIONS" = true ]; then
+            BUILD_ARGS="$BUILD_ARGS --provenance=true --sbom=true"
+            echo "Supply chain attestations (SBOM and provenance) will be included"
+        fi
         echo "Will push multiplatform image directly to: $TARGET_IMAGE"
     elif [ "$PUSH" = true ] && [ -n "$REGISTRY" ]; then
         # Single platform with push - can load locally then push later
@@ -331,6 +356,9 @@ if [ -n "$PLATFORM" ] || [ "$MULTIPLATFORM_PUSH" = true ]; then
             echo "Use --push or --multiplatform-push to push to a registry instead."
         else
             BUILD_ARGS="$BUILD_ARGS --load -t $IMAGE_NAME:$TAG"
+            if [ "$ENABLE_ATTESTATIONS" = true ]; then
+                echo "Note: Building for local use without attestations (attestations require --push)"
+            fi
         fi
     fi
 else
